@@ -5,6 +5,9 @@
 #include "FusionEKF.h"
 #include "tools.h"
 
+#include <execinfo.h>
+#include <signal.h>
+
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::string;
@@ -29,7 +32,22 @@ string hasData(string s) {
   return "";
 }
 
+void handler(int sig) {
+  void *array[10];
+  size_t size;
+
+  // get void*'s for all entries on the stack
+  size = backtrace(array, 10);
+
+  // print out all the frames to stderr
+  fprintf(stderr, "Error: signal %d:\n", sig);
+  backtrace_symbols_fd(array, size, STDERR_FILENO);
+  exit(1);
+}
+
 int main() {
+  signal(SIGSEGV, handler);
+
   uWS::Hub h;
 
   // Create a Kalman Filter instance
@@ -43,6 +61,7 @@ int main() {
   h.onMessage([&fusionEKF,&tools,&estimations,&ground_truth]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, 
                uWS::OpCode opCode) {
+
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -53,14 +72,14 @@ int main() {
         auto j = json::parse(s);
 
         string event = j[0].get<string>();
-        
+
         if (event == "telemetry") {
           // j[1] is the data JSON object
           string sensor_measurement = j[1]["sensor_measurement"];
-          
+
           MeasurementPackage meas_package;
           std::istringstream iss(sensor_measurement);
-          
+
           long long timestamp;
 
           // reads first element from the current line
@@ -106,9 +125,9 @@ int main() {
           gt_values(2) = vx_gt;
           gt_values(3) = vy_gt;
           ground_truth.push_back(gt_values);
-          
+
           // Call ProcessMeasurement(meas_package) for Kalman filter
-          fusionEKF.ProcessMeasurement(meas_package);       
+          fusionEKF.ProcessMeasurement(meas_package);
 
           // Push the current estimated x,y positon from the Kalman filter's 
           //   state vector
@@ -139,7 +158,6 @@ int main() {
           auto msg = "42[\"estimate_marker\"," + msgJson.dump() + "]";
           // std::cout << msg << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-
         }  // end "telemetry" if
 
       } else {
